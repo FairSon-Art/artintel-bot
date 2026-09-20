@@ -10,10 +10,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
 PORT = int(os.getenv("PORT", 8080))
 
-# Correction critique : utilisation de anthropic.Anthropic au lieu de client déprécié
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 SYSTEM_PROMPT = """Tu es curateur associé et analyste du marché primaire/secondaire (post-émergence, 5-15k€). 
@@ -31,7 +29,7 @@ Format de réponse obligatoire :
 - Le prix plafond conseillé pour de l'achat primaire sécurisé."""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("ArtIntel VIP actif. Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
+    await update.message.reply_text("ArtIntel VIP actif (Anthropic). Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
 
 async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
@@ -39,11 +37,12 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /bluehunt [Nom Artiste - Prix demandé ex: 8000€]")
         return
     
-    await update.message.reply_text(f"Analyse institutionnelle en cours ({CLAUDE_MODEL}) : {query}...")
+    model_to_use = "claude-3-5-sonnet-latest"
+    await update.message.reply_text(f"Analyse institutionnelle en cours ({model_to_use}) : {query}...")
     
     try:
         response = client.messages.create(
-            model=CLAUDE_MODEL,
+            model=model_to_use,
             max_tokens=600,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": f"Évalue cet artiste/œuvre : {query}"}]
@@ -56,7 +55,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_reply = str(response.content)
         await update.message.reply_text(text_reply)
     except Exception as e:
-        await update.message.reply_text(f"Erreur API ({CLAUDE_MODEL}) : {e}")
+        await update.message.reply_text(f"Erreur API Anthropic : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -81,8 +80,8 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print(f"Le bot est réveillé, modèle configuré: {CLAUDE_MODEL}")
+    print("Le bot est réveillé (Anthropic latest)...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
-    main()
+    main>
