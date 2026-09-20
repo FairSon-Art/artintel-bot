@@ -29,7 +29,7 @@ def call_gemini_resilient(prompt_text):
     for attempt in range(max_retries):
         try:
             return gemini_client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-3.6-flash',
                 contents=prompt_text,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
