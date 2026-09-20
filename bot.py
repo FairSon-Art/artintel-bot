@@ -15,12 +15,7 @@ PORT = int(os.getenv("PORT", 8080))
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-SYSTEM_PROMPT = """Tu es curateur associé (marché post-émergence, 5-15k€). 
-Écris EXACTEMENT 4 lignes, rien de plus, sans introduction ni conclusion :
-Score: X/10
-Tiers: [Spéculatif / Candidat Blue-Chip / Verrouillé]
-RedFlag: [court]
-Plafond: X€"""
+SYSTEM_PROMPT = """Tu es curateur d'art. En 2 ou 3 phrases max, donne ton avis net sur cet artiste et ce prix (5-15k€) : score /10, potentiel blue-chip, et un gros risque ou feu vert."""
 
 def call_gemini_resilient(prompt_text):
     max_retries = 3
@@ -31,8 +26,8 @@ def call_gemini_resilient(prompt_text):
                 contents=prompt_text,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
-                    max_output_tokens=250,
-                    temperature=0.1
+                    max_output_tokens=300,
+                    temperature=0.4
                 )
             )
         except Exception as e:
@@ -56,19 +51,15 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = call_gemini_resilient(f"Évalue : {query}")
-        raw_text = getattr(response, 'text', '').strip()
-        if not raw_text and getattr(response, 'candidates', None):
+        text_reply = getattr(response, 'text', None)
+        if not text_reply and getattr(response, 'candidates', None):
             parts = response.candidates[0].content.parts
-            raw_text = "".join(p.text for p in parts if hasattr(p, 'text')).strip()
+            text_reply = "".join(p.text for p in parts if hasattr(p, 'text'))
         
-        # Nettoyage et découpage propre des 4 lignes max
-        lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
-        if lines:
-            formatted_message = "\n".join(lines[:4])
-        else:
-            formatted_message = "Réponse vide."
+        if not text_reply:
+            text_reply = "Réponse vide."
             
-        await update.message.reply_text(formatted_message)
+        await update.message.reply_text(text_reply.strip())
         
     except Exception as e:
         err_str = str(e)
