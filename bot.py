@@ -2,7 +2,6 @@ import os
 import logging
 import threading
 import time
-import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
@@ -16,15 +15,9 @@ PORT = int(os.getenv("PORT", 8080))
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-SYSTEM_PROMPT = """Tu es curateur associé et analyste du marché primaire/secondaire (post-émergence, 5-15k€). 
-Analyse l'artiste soumis pour identifier s'il coche la case "blue-chip accessible en devenir".
-Réponds UNIQUEMENT un JSON valide avec ces clés exactes :
-{
-  "score": "X/10",
-  "tiers": "Spéculatif pur / Candidat Blue-Chip / Déjà verrouillé hors budget",
-  "red_flag": "1 phrase max",
-  "plafond_primaire": "X €"
-}"""
+SYSTEM_PROMPT = """Tu es curateur associé (marché post-émergence, 5-15k€). 
+Réponds UNIQUEMENT sur une seule ligne, sans saut de ligne, avec ce format strict :
+Score/10 | Tiers (Spéculatif / Candidat Blue-Chip / Verrouillé) | Red Flag (10 mots max) | Plafond (€)"""
 
 def call_gemini_resilient(prompt_text):
     max_retries = 3
@@ -35,8 +28,7 @@ def call_gemini_resilient(prompt_text):
                 contents=prompt_text,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    max_output_tokens=400,
+                    max_output_tokens=150,
                     temperature=0.1
                 )
             )
@@ -49,7 +41,7 @@ def call_gemini_resilient(prompt_text):
             raise e
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("ArtIntel VIP actif (JSON mode). Envoie /bluehunt [Artiste / Œuvre + prix]")
+    await update.message.reply_text("ArtIntel VIP actif. Envoie /bluehunt [Artiste / Œuvre + prix]")
 
 async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
@@ -61,21 +53,22 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = call_gemini_resilient(f"Évalue : {query}")
-        raw_text = getattr(response, 'text', '')
+        raw_text = getattr(response, 'text', '').strip()
         
-        # Parse JSON et formatage propre client-side
-        data = json.loads(raw_text)
-        formatted_message = (
-            f"🎯 Score : {data.get('score', 'N/A')}\n"
-            f"🏷️ Tiers : {data.get('tiers', 'N/A')}\n"
-            f"🚩 Red Flag : {data.get('red_flag', 'N/A')}\n"
-            f"💰 Plafond : {data.get('plafond_primaire', 'N/A')}"
-        )
+        # Découpage propre par le pipe
+        parts = [p.strip() for p in raw_text.split('|')]
+        if len(parts) == 4:
+            formatted_message = (
+                f"🎯 Score : {parts[0]}\n"
+                f"🏷️ Tiers : {parts}\n"
+                f"🚩 Red Flag : {parts}\n"
+                f"💰 Plafond : {parts}"
+            )
+        else:
+            formatted_message = raw_text or "Réponse vide."
+            
         await update.message.reply_text(formatted_message)
         
-    except json.JSONDecodeError:
-        # Fallback si le JSON est malformé ou brut
-        await update.message.reply_text(raw_text or "Erreur de format de réponse.")
     except Exception as e:
         err_str = str(e)
         if any(k in err_str.lower() for k in ['503', 'unavailable', 'high demand', '429']):
@@ -106,7 +99,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé (JSON)...")
+    print("Le bot est réveillé (mode pipe)...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
