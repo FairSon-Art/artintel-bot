@@ -84,4 +84,4 @@ def main():
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
-    main>
+    main()
