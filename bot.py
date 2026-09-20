@@ -5,6 +5,7 @@ import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from telegram.constants import ParseMode
 from google import genai
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -18,11 +19,11 @@ gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 SYSTEM_PROMPT = """Tu es curateur associé et analyste du marché primaire/secondaire (post-émergence, 5-15k€). 
 Analyse l'artiste soumis pour identifier s'il coche la case "blue-chip accessible en devenir".
 
-Réponds UNIQUEMENT sous cette forme exacte, sans introduction ni conclusion :
-Score global : [X]/10
-Tiers : [Spéculatif pur / Candidat Blue-Chip / Déjà verrouillé hors budget]
-Red Flag : [1 phrase max]
-Plafond achat primaire : [X] €"""
+Donne une réponse concise, percutante et complète avec ce format exact :
+* **Score global** : [X]/10
+* **Tiers** : [Spéculatif pur / Candidat Blue-Chip / Déjà verrouillé hors budget]
+* **Red Flag** : [1 phrase max]
+* **Plafond achat primaire** : [X] €"""
 
 def call_gemini_resilient(prompt_text):
     max_retries = 3
@@ -33,7 +34,7 @@ def call_gemini_resilient(prompt_text):
                 contents=prompt_text,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
-                    max_output_tokens=300
+                    max_output_tokens=800
                 )
             )
         except Exception as e:
@@ -66,7 +67,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text_reply:
             text_reply = "Réponse vide."
             
-        await update.message.reply_text(text_reply.strip())
+        await update.message.reply_text(text_reply.strip(), parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         err_str = str(e)
         if any(k in err_str.lower() for k in ['503', 'unavailable', 'high demand', '429']):
