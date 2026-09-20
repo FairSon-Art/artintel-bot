@@ -4,15 +4,15 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
-import anthropic
+from google import genai
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PORT = int(os.getenv("PORT", 8080))
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT = """Tu es curateur associé et analyste du marché primaire/secondaire (post-émergence, 5-15k€). 
 Analyse l'artiste soumis pour identifier s'il coche la case "blue-chip accessible en devenir".
@@ -29,7 +29,7 @@ Format de réponse obligatoire :
 - Le prix plafond conseillé pour de l'achat primaire sécurisé."""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("ArtIntel VIP actif (Anthropic). Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
+    await update.message.reply_text("ArtIntel VIP actif (Gemini). Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
 
 async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
@@ -37,25 +37,20 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /bluehunt [Nom Artiste - Prix demandé ex: 8000€]")
         return
     
-    model_to_use = "claude-3-5-sonnet-latest"
-    await update.message.reply_text(f"Analyse institutionnelle en cours ({model_to_use}) : {query}...")
+    await update.message.reply_text(f"Analyse institutionnelle en cours (Gemini) : {query}...")
     
     try:
-        response = client.messages.create(
-            model=model_to_use,
-            max_tokens=600,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"Évalue cet artiste/œuvre : {query}"}]
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=f"Évalue cet artiste/œuvre : {query}",
+            config=genai.types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                max_output_tokens=600
+            )
         )
-        text_reply = ""
-        for block in response.content:
-            if hasattr(block, 'text'):
-                text_reply += block.text
-        if not text_reply:
-            text_reply = str(response.content)
-        await update.message.reply_text(text_reply)
+        await update.message.reply_text(response.text)
     except Exception as e:
-        await update.message.reply_text(f"Erreur API Anthropic : {e}")
+        await update.message.reply_text(f"Erreur API Gemini : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -70,7 +65,7 @@ def run_http_server():
     server.serve_forever()
 
 def main():
-    if not TELEGRAM_TOKEN or not ANTHROPIC_API_KEY:
+    if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
         print("ERREUR : Il manque une clé secrète !")
         return
     
@@ -80,7 +75,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé (Anthropic latest)...")
+    print("Le bot est réveillé (Gemini)...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
