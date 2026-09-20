@@ -16,8 +16,11 @@ PORT = int(os.getenv("PORT", 8080))
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT = """Tu es curateur associé (marché post-émergence, 5-15k€). 
-Réponds UNIQUEMENT sur une seule ligne, sans saut de ligne, avec ce format strict :
-Score/10 | Tiers (Spéculatif / Candidat Blue-Chip / Verrouillé) | Red Flag (10 mots max) | Plafond (€)"""
+Écris EXACTEMENT 4 lignes, rien de plus, sans introduction ni conclusion :
+Score: X/10
+Tiers: [Spéculatif / Candidat Blue-Chip / Verrouillé]
+RedFlag: [court]
+Plafond: X€"""
 
 def call_gemini_resilient(prompt_text):
     max_retries = 3
@@ -28,7 +31,7 @@ def call_gemini_resilient(prompt_text):
                 contents=prompt_text,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
-                    max_output_tokens=150,
+                    max_output_tokens=250,
                     temperature=0.1
                 )
             )
@@ -54,18 +57,16 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         response = call_gemini_resilient(f"Évalue : {query}")
         raw_text = getattr(response, 'text', '').strip()
+        if not raw_text and getattr(response, 'candidates', None):
+            parts = response.candidates[0].content.parts
+            raw_text = "".join(p.text for p in parts if hasattr(p, 'text')).strip()
         
-        # Découpage propre par le pipe
-        parts = [p.strip() for p in raw_text.split('|')]
-        if len(parts) == 4:
-            formatted_message = (
-                f"🎯 Score : {parts[0]}\n"
-                f"🏷️ Tiers : {parts}\n"
-                f"🚩 Red Flag : {parts}\n"
-                f"💰 Plafond : {parts}"
-            )
+        # Nettoyage et découpage propre des 4 lignes max
+        lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
+        if lines:
+            formatted_message = "\n".join(lines[:4])
         else:
-            formatted_message = raw_text or "Réponse vide."
+            formatted_message = "Réponse vide."
             
         await update.message.reply_text(formatted_message)
         
@@ -99,7 +100,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé (mode pipe)...")
+    print("Le bot est réveillé...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
