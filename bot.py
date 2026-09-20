@@ -66,7 +66,6 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text_reply:
             text_reply = "Réponse vide."
             
-        # Envoi en texte brut pur pour éviter tout conflit de balises Telegram
         await update.message.reply_text(text_reply.strip())
     except Exception as e:
         err_str = str(e)
@@ -76,7 +75,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Erreur API Gemini : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET:
+    def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"OK")
