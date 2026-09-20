@@ -1,6 +1,8 @@
 import os
 import logging
 import threading
+import time
+import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
@@ -29,7 +31,27 @@ Format de réponse obligatoire :
 - Le prix plafond conseillé pour de l'achat primaire sécurisé."""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("ArtIntel VIP actif (Gemini). Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
+    await update.message.reply_text("ArtIntel VIP actif (Gemini Résilient). Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
+
+def generate_with_retry(prompt_text):
+    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash']
+    last_err = None
+    for model_name in models_to_try:
+        for attempt in range(3):
+            try:
+                response = gemini_client.models.generate_content(
+                    model=model_name,
+                    contents=prompt_text,
+                    config=genai.types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        max_output_tokens=600
+                    )
+                )
+                return response.text
+            except Exception as e:
+                last_err = e
+                time.sleep(2 * (attempt + 1))
+    raise last_err
 
 async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
@@ -37,20 +59,14 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /bluehunt [Nom Artiste - Prix demandé ex: 8000€]")
         return
     
-    await update.message.reply_text(f"Analyse institutionnelle en cours (Gemini 3.6-flash) : {query}...")
+    await update.message.reply_text(f"Analyse institutionnelle en cours (Gemini avec retry) : {query}...")
     
     try:
-        response = gemini_client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=f"Évalue cet artiste/œuvre : {query}",
-            config=genai.types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=600
-            )
-        )
-        await update.message.reply_text(response.text)
+        loop = asyncio.get_running_loop()
+        reply_text = await loop.run_in_executor(None, generate_with_retry, f"Évalue cet artiste/œuvre : {query}")
+        await update.message.reply_text(reply_text)
     except Exception as e:
-        await update.message.reply_text(f"Erreur API Gemini : {e}")
+        await update.message.reply_text(f"Erreur API Gemini persistante après retries : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -75,7 +91,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé (Gemini)...")
+    print("Le bot est réveillé (Gemini résilient)...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
