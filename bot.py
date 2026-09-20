@@ -13,7 +13,8 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
 PORT = int(os.getenv("PORT", 8080))
 
-claude_client = anthropic.Client(api_key=ANTHROPIC_API_KEY)
+# Correction critique : utilisation de anthropic.Anthropic au lieu de client déprécié
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 SYSTEM_PROMPT = """Tu es curateur associé et analyste du marché primaire/secondaire (post-émergence, 5-15k€). 
 Analyse l'artiste soumis pour identifier s'il coche la case "blue-chip accessible en devenir".
@@ -41,7 +42,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Analyse institutionnelle en cours ({CLAUDE_MODEL}) : {query}...")
     
     try:
-        response = claude_client.messages.create(
+        response = client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=600,
             system=SYSTEM_PROMPT,
@@ -58,8 +59,12 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erreur API ({CLAUDE_MODEL}) : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
-    do_GET = lambda self: (self.send_response(200), self.end_headers(), self.wfile.write(b"OK"))
-    log_message = lambda self, format, *args: None
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        return
 
 def run_http_server():
     server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
