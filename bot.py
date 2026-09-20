@@ -41,7 +41,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = gemini_client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.0-flash',
             contents=f"Évalue cet artiste/œuvre : {query}",
             config=genai.types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
@@ -75,7 +75,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé (Gemini 1.5 Flash)...")
+    print("Le bot est réveillé (Gemini 2.0 Flash)...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
