@@ -15,10 +15,14 @@ PORT = int(os.getenv("PORT", 8080))
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-SYSTEM_PROMPT = """Tu es curateur d'art (marché 5-15k€). Donne un verdict ultra-direct en 2 phrases max : score /10, statut (spéculatif / blue-chip en devenir / hors budget), et le risque majeur."""
+SYSTEM_PROMPT = """Tu es curateur d'art (marché 5-15k€). 
+Réponds STRICTEMENT en 3 lignes, en texte brut, SANS AUCUNE ÉTOILE NI MARKDOWN (* ou _ interdit) :
+Score: X/10 | Statut
+Verdict: [1 phrase]
+Risque: [1 phrase]"""
 
 def call_gemini_resilient(prompt_text):
-    max_retries = 3
+    max_retries = 4
     for attempt in range(max_retries):
         try:
             return gemini_client.models.generate_content(
@@ -26,15 +30,15 @@ def call_gemini_resilient(prompt_text):
                 contents=prompt_text,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
-                    max_output_tokens=1024,
-                    temperature=0.3
+                    max_output_tokens=512,
+                    temperature=0.2
                 )
             )
         except Exception as e:
             err_str = str(e).lower()
             is_overloaded = any(k in err_str for k in ['503', '429', 'unavailable', 'resource_exhausted', 'overloaded'])
             if is_overloaded and attempt < max_retries - 1:
-                time.sleep((attempt + 1) * 2)
+                time.sleep((attempt + 1) * 3)
                 continue
             raise e
 
@@ -59,12 +63,14 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text_reply:
             text_reply = "Réponse vide."
             
-        await update.message.reply_text(text_reply.strip())
+        # Nettoyage radical anti-markdown / anti-astérisques
+        clean_text = text_reply.replace('**', '').replace('__', '').replace('*', '').strip()
+        await update.message.reply_text(clean_text)
         
     except Exception as e:
         err_str = str(e)
         if any(k in err_str.lower() for k in ['503', 'unavailable', 'high demand', '429']):
-            await update.message.reply_text("⚠️ Google AI Studio sature. Réessaie dans 30 secondes !")
+            await update.message.reply_text("⚠️ Google AI Studio sature fortement. Patiente 5s et réessaie.")
         else:
             await update.message.reply_text(f"Erreur API Gemini : {e}")
 
