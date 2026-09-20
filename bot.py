@@ -4,6 +4,7 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from telegram.constants import ParseMode
 from google import genai
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -22,11 +23,11 @@ Critères stricts de notation (sur 10) :
 3. Résistance du second marché ou absence de dumping spéculatif : /2
 4. Rareté/maturité du corpus : /2
 
-Format de réponse obligatoire :
-- Score global (ex: 7.5/10)
-- Tiers actuel (Spéculatif pur / Candidat Blue-Chip / Déjà verrouillé hors budget)
-- Le "Red Flag" majeur
-- Le prix plafond conseillé pour de l'achat primaire sécurisé."""
+Format de réponse obligatoire (utilise des tirets simples, pas de markdown cassé) :
+Score global : [ex: 7.5/10]
+Tiers actuel : [Spéculatif pur / Candidat Blue-Chip / Déjà verrouillé hors budget]
+Red Flag majeur : [1 phrase]
+Prix plafond conseillé (achat primaire sécurisé) : [ex: 8000€]"""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("ArtIntel VIP actif (Gemini). Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
@@ -49,7 +50,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
         
-        # Extraction sécurisée (contourne le "Message text is empty")
+        # Extraction sécurisée
         text_reply = getattr(response, 'text', None)
         if not text_reply and getattr(response, 'candidates', None):
             parts = response.candidates[0].content.parts
@@ -58,7 +59,8 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text_reply:
             text_reply = "Réponse vide ou filtrée par la sécurité de l'API."
             
-        await update.message.reply_text(text_reply)
+        # Envoi propre sans gros pâtés markdown bruts
+        await update.message.reply_text(text_reply, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         err_str = str(e)
         if "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str.lower():
