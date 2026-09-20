@@ -15,7 +15,7 @@ PORT = int(os.getenv("PORT", 8080))
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-SYSTEM_PROMPT = """Tu es curateur d'art. En 2 ou 3 phrases max, donne ton avis net sur cet artiste et ce prix (5-15k€) : score /10, potentiel blue-chip, et un gros risque ou feu vert."""
+SYSTEM_PROMPT = """Tu es curateur d'art (marché 5-15k€). Donne un verdict ultra-direct en 2 phrases max : score /10, statut (spéculatif / blue-chip en devenir / hors budget), et le risque majeur."""
 
 def call_gemini_resilient(prompt_text):
     max_retries = 3
@@ -26,8 +26,8 @@ def call_gemini_resilient(prompt_text):
                 contents=prompt_text,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
-                    max_output_tokens=300,
-                    temperature=0.4
+                    max_output_tokens=1024,
+                    temperature=0.3
                 )
             )
         except Exception as e:
