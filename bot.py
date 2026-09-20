@@ -41,7 +41,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = claude_client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-3-haiku-20240307",
             max_tokens=600,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": f"Évalue cet artiste/œuvre : {query}"}]
@@ -57,12 +57,8 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erreur API : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args):
-        return
+    do_GET = lambda self: (self.send_response(200), self.end_headers(), self.wfile.write(b"OK"))
+    log_message = lambda self, format, *args: None
 
 def run_http_server():
     server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
