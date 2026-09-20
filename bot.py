@@ -1,10 +1,10 @@
 import os
 import logging
 import threading
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
-from telegram.constants import ParseMode
 from google import genai
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -17,20 +17,35 @@ gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT = """Tu es curateur associé et analyste du marché primaire/secondaire (post-émergence, 5-15k€). 
 Analyse l'artiste soumis pour identifier s'il coche la case "blue-chip accessible en devenir".
-Critères stricts de notation (sur 10) :
-1. Ancrage institutionnel précoce (prix, centre d'art, résidence reconnue : /3)
-2. Densité et constance du marché primaire (galeries mid-tier reconnues : /3)
-3. Résistance du second marché ou absence de dumping spéculatif : /2
-4. Rareté/maturité du corpus : /2
 
-Format de réponse obligatoire (utilise des tirets simples, pas de markdown cassé) :
-Score global : [ex: 7.5/10]
-Tiers actuel : [Spéculatif pur / Candidat Blue-Chip / Déjà verrouillé hors budget]
-Red Flag majeur : [1 phrase]
-Prix plafond conseillé (achat primaire sécurisé) : [ex: 8000€]"""
+Réponds UNIQUEMENT sous cette forme exacte, sans introduction ni conclusion :
+Score global : [X]/10
+Tiers : [Spéculatif pur / Candidat Blue-Chip / Déjà verrouillé hors budget]
+Red Flag : [1 phrase max]
+Plafond achat primaire : [X] €"""
+
+def call_gemini_resilient(prompt_text):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            return gemini_client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt_text,
+                config=genai.types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    max_output_tokens=300
+                )
+            )
+        except Exception as e:
+            err_str = str(e).lower()
+            is_overloaded = any(k in err_str for k in ['503', '429', 'unavailable', 'resource_exhausted', 'overloaded'])
+            if is_overloaded and attempt < max_retries - 1:
+                time.sleep((attempt + 1) * 2)
+                continue
+            raise e
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("ArtIntel VIP actif (Gemini). Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
+    await update.message.reply_text("ArtIntel VIP actif. Envoie /bluehunt [Artiste / Œuvre + prix] pour scanner la trajectoire.")
 
 async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
@@ -38,38 +53,30 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /bluehunt [Nom Artiste - Prix demandé ex: 8000€]")
         return
     
-    await update.message.reply_text(f"Analyse institutionnelle en cours (Gemini) : {query}...")
+    await update.message.reply_text(f"Analyse institutionnelle en cours : {query}...")
     
     try:
-        response = gemini_client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=f"Évalue cet artiste/œuvre : {query}",
-            config=genai.types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=600
-            )
-        )
+        response = call_gemini_resilient(f"Évalue cet artiste/œuvre : {query}")
         
-        # Extraction sécurisée
         text_reply = getattr(response, 'text', None)
         if not text_reply and getattr(response, 'candidates', None):
             parts = response.candidates[0].content.parts
             text_reply = "".join(p.text for p in parts if hasattr(p, 'text'))
         
         if not text_reply:
-            text_reply = "Réponse vide ou filtrée par la sécurité de l'API."
+            text_reply = "Réponse vide."
             
-        # Envoi propre sans gros pâtés markdown bruts
-        await update.message.reply_text(text_reply, parse_mode=ParseMode.MARKDOWN)
+        # Envoi en texte brut pur pour éviter tout conflit de balises Telegram
+        await update.message.reply_text(text_reply.strip())
     except Exception as e:
         err_str = str(e)
-        if "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str.lower():
-            await update.message.reply_text("⚠️ Google AI Studio sature (forte demande). Réessaie dans 30 secondes !")
+        if any(k in err_str.lower() for k in ['503', 'unavailable', 'high demand', '429']):
+            await update.message.reply_text("⚠️ Google AI Studio sature. Réessaie dans 30 secondes !")
         else:
             await update.message.reply_text(f"Erreur API Gemini : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_GET:
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"OK")
@@ -91,7 +98,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé (Gemini)...")
+    print("Le bot est réveillé...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
