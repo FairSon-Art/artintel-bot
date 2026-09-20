@@ -10,6 +10,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
 PORT = int(os.getenv("PORT", 8080))
 
 claude_client = anthropic.Client(api_key=ANTHROPIC_API_KEY)
@@ -37,11 +38,11 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /bluehunt [Nom Artiste - Prix demandé ex: 8000€]")
         return
     
-    await update.message.reply_text(f"Analyse institutionnelle et de marché en cours pour : {query}...")
+    await update.message.reply_text(f"Analyse institutionnelle en cours ({CLAUDE_MODEL}) : {query}...")
     
     try:
         response = claude_client.messages.create(
-            model="claude-3-5-sonnet-latest",
+            model=CLAUDE_MODEL,
             max_tokens=600,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": f"Évalue cet artiste/œuvre : {query}"}]
@@ -54,15 +55,11 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_reply = str(response.content)
         await update.message.reply_text(text_reply)
     except Exception as e:
-        await update.message.reply_text(f"Erreur API : {e}")
+        await update.message.reply_text(f"Erreur API ({CLAUDE_MODEL}) : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args):
-        return
+    do_GET = lambda self: (self.send_response(200), self.end_headers(), self.wfile.write(b"OK"))
+    log_message = lambda self, format, *args: None
 
 def run_http_server():
     server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
@@ -79,8 +76,8 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé et écoute sur Telegram...")
-    app.run_polling()
+    print(f"Le bot est réveillé, modèle configuré: {CLAUDE_MODEL}")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
