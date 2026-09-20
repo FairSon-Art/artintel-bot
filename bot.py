@@ -41,7 +41,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = claude_client.messages.create(
-            model="claude-3-5-sonnet-latest",
+            model="claude-3-sonnet-20240229",
             max_tokens=600,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": f"Évalue cet artiste/œuvre : {query}"}]
