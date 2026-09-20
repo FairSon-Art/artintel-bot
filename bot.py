@@ -37,7 +37,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /bluehunt [Nom Artiste - Prix demandé ex: 8000€]")
         return
     
-    await update.message.reply_text(f"Analyse institutionnelle en cours (Gemini 3.6-flash) : {query}...")
+    await update.message.reply_text(f"Analyse institutionnelle en cours (Gemini) : {query}...")
     
     try:
         response = gemini_client.models.generate_content(
@@ -48,11 +48,21 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 max_output_tokens=600
             )
         )
-        await update.message.reply_text(response.text)
+        
+        # Extraction sécurisée (contourne le "Message text is empty")
+        text_reply = getattr(response, 'text', None)
+        if not text_reply and getattr(response, 'candidates', None):
+            parts = response.candidates[0].content.parts
+            text_reply = "".join(p.text for p in parts if hasattr(p, 'text'))
+        
+        if not text_reply:
+            text_reply = "Réponse vide ou filtrée par la sécurité de l'API."
+            
+        await update.message.reply_text(text_reply)
     except Exception as e:
         err_str = str(e)
         if "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str.lower():
-            await update.message.reply_text("⚠️ Google AI Studio sature (forte demande sur le palier gratuit). Réessaie dans 30 secondes !")
+            await update.message.reply_text("⚠️ Google AI Studio sature (forte demande). Réessaie dans 30 secondes !")
         else:
             await update.message.reply_text(f"Erreur API Gemini : {e}")
 
