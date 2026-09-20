@@ -41,7 +41,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=f"Évalue cet artiste/œuvre : {query}",
             config=genai.types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
