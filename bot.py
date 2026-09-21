@@ -19,12 +19,12 @@ client = anthropic_pkg.Anthropic(api_key=ANTHROPIC_API_KEY)
 conversation_history = {}
 
 SYSTEM_PROMPT = """Tu es curateur associé et analyste principal du marché de l'art (tranche cible globale 5-15k€, plafond absolu 15 000 €).
-Adopte un ton direct, élégant, sans gros titres ##, utilise des emojis et du gras.
+Adopte un ton direct, élégant, dense et percutant, sans gros titres ##, utilise des emojis et du gras.
 
 Règle absolue : si une pièce ou une estimation dépasse 15 000 €, commence par un avertissement 🚨 **HORS PLAFOND VIP (>15k€)**.
 
 Structure type de ton analyse :
-🎯 **Statut & Potentiel** : [Établi / Spécialisé / Patrimonial]
+🎯 **Score & Verdict** : [X/10] — [Achat recommandé / Vigilance / Passe ton tour]
 🏛️ **Trajectoire** : [Institutions / Galeries / Foires majeures]
 ⚡ **Risque & Liquidité** : [Niveau de liquidité secondaire]
 
@@ -33,7 +33,7 @@ Structure type de ton analyse :
 - Œuvre papier / Petit original : [Fourchette €]
 - Toile / Œuvre majeure / Signature : [Fourchette € max, bloqué à 15k€ max]
 
-Si un prix précis est donné par l'utilisateur, commente sa pertinence. Sinon, donne la grille de référence. Pose 2 questions ciblées si des manques bloquent l'affinage."""
+Si un prix précis est donné par l'utilisateur, commente sa pertinence. Sinon, donne la grille de référence. Sois concis et direct pour éviter toute coupe de texte. Pose 2 questions ciblées si des manques bloquent l'affinage."""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -56,7 +56,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
     await update.message.reply_text(f"🔍 *Scan & Matrice 5-15k€* : {query}...", parse_mode=ParseMode.MARKDOWN)
     
-    user_prompt = f"Évalue cette cible / donne la grille de prix d'acquisition (rappel plafond strict 15k€) : {query}"
+    user_prompt = f"Évalue cette cible / donne le score / la grille de prix d'acquisition (rappel plafond strict 15k€) : {query}"
     
     conversation_history[chat_id] = [
         {"role": "user", "content": user_prompt}
@@ -76,11 +76,22 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
     await get_and_send_claude_response(update, chat_id)
 
+async def send_long_message(update: Update, text: str):
+    """Découpe et envoie les messages trop longs pour Telegram (limite ~4096 caractères)."""
+    max_length = 4000
+    if len(text) <= max_length:
+        await update.message.reply_text(text.strip(), parse_mode=ParseMode.MARKDOWN)
+        return
+    
+    parts = [text[i:i+max_length] for i in range(0, len(text), max_length)]
+    for part in parts:
+        await update.message.reply_text(part.strip(), parse_mode=ParseMode.MARKDOWN)
+
 async def get_and_send_claude_response(update: Update, chat_id: int):
     try:
         response = client.messages.create(
             model="claude-sonnet-5",
-            max_tokens=1024,
+            max_tokens=600,  # Réduit pour éviter les réponses trop longues qui coupent
             system=SYSTEM_PROMPT,
             messages=conversation_history[chat_id]
         )
@@ -101,7 +112,7 @@ async def get_and_send_claude_response(update: Update, chat_id: int):
         if len(conversation_history[chat_id]) > 10:
             conversation_history[chat_id] = conversation_history[chat_id][-10:]
             
-        await update.message.reply_text(text_reply.strip(), parse_mode=ParseMode.MARKDOWN)
+        await send_long_message(update, text_reply)
         
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erreur Claude : `{e}`", parse_mode=ParseMode.MARKDOWN)
@@ -131,7 +142,7 @@ def main():
     app.add_handler(CommandHandler("bluehunt", bluehunt))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_chat_message))
     
-    print("Le bot Claude avec grille 15kmax et mémoire corrigée anti-thinking est opérationnel...")
+    print("Le bot Claude avec score /10, anti-coupure et mémoire est opérationnel...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
