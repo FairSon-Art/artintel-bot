@@ -35,7 +35,7 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-5",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             messages=[
