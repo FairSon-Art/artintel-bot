@@ -128,7 +128,7 @@ async def get_and_send_claude_response(update: Update, chat_id: int, mode: str):
         
         response = client.messages.create(
             model="claude-sonnet-5",
-            max_tokens=600,
+            max_tokens=1500,
             system=sys_prompt,
             messages=conversation_history[chat_id]
         )
@@ -142,6 +142,9 @@ async def get_and_send_claude_response(update: Update, chat_id: int, mode: str):
                 
         if not text_reply and response.content:
             text_reply = str(response.content[-1])
+        
+        if response.stop_reason == "max_tokens":
+            text_reply += "\n\n⚠️ *(Analyse dense, suite disponible sur simple 'continue')*"
         
         conversation_history[chat_id].append({"role": "assistant", "content": text_reply})
         
