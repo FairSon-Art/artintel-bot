@@ -84,14 +84,24 @@ async def get_and_send_claude_response(update: Update, chat_id: int):
             system=SYSTEM_PROMPT,
             messages=conversation_history[chat_id]
         )
-        reply_text = response.content[0].text
         
-        conversation_history[chat_id].append({"role": "assistant", "content": reply_text})
+        # Extrait uniquement le bloc texte, ignore les blocs de réflexion (thinking)
+        text_reply = ""
+        for block in response.content:
+            if hasattr(block, 'text'):
+                text_reply += block.text
+            elif isinstance(block, dict) and block.get('type') == 'text':
+                text_reply += block.get('text', '')
+                
+        if not text_reply and response.content:
+            text_reply = str(response.content[-1])
+        
+        conversation_history[chat_id].append({"role": "assistant", "content": text_reply})
         
         if len(conversation_history[chat_id]) > 10:
             conversation_history[chat_id] = conversation_history[chat_id][-10:]
             
-        await update.message.reply_text(reply_text.strip(), parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(text_reply.strip(), parse_mode=ParseMode.MARKDOWN)
         
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erreur Claude : `{e}`", parse_mode=ParseMode.MARKDOWN)
@@ -121,7 +131,7 @@ def main():
     app.add_handler(CommandHandler("bluehunt", bluehunt))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_chat_message))
     
-    print("Le bot Claude avec grille 15kmax et mémoire est opérationnel...")
+    print("Le bot Claude avec grille 15kmax et mémoire corrigée anti-thinking est opérationnel...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
