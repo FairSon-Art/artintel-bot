@@ -1,49 +1,29 @@
 import os
 import logging
 import threading
-import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
-from google import genai
+from telegram.constants import ParseMode
+import anthropic
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 PORT = int(os.getenv("PORT", 8080))
 
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-SYSTEM_PROMPT = """Tu es curateur d'art (marché 5-15k€). 
-Réponds STRICTEMENT en 3 lignes, en texte brut, SANS AUCUNE ÉTOILE NI MARKDOWN (* ou _ interdit) :
-Score: X/10 | Statut
-Verdict: [1 phrase]
-Risque: [1 phrase]"""
-
-def call_gemini_resilient(prompt_text):
-    max_retries = 4
-    for attempt in range(max_retries):
-        try:
-            return gemini_client.models.generate_content(
-                model='gemini-3.6-flash',
-                contents=prompt_text,
-                config=genai.types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    max_output_tokens=512,
-                    temperature=0.2
-                )
-            )
-        except Exception as e:
-            err_str = str(e).lower()
-            is_overloaded = any(k in err_str for k in ['503', '429', 'unavailable', 'resource_exhausted', 'overloaded'])
-            if is_overloaded and attempt < max_retries - 1:
-                time.sleep((attempt + 1) * 3)
-                continue
-            raise e
+SYSTEM_PROMPT = """Tu es curateur associé et analyste principal du marché de l'art (primaire/secondaire, tranche 5-15k€).
+Fournis une analyse dense, percutante et structurée en Markdown propre :
+- **Verdict / Score** (/10)
+- **Trajectoire institutionnelle** (expositions, galerie, foires)
+- **Risque spéculatif & Liquidité**
+- **Plafond d'achat conseillé**"""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("ArtIntel VIP actif. Envoie /bluehunt [Artiste / Œuvre + prix]")
+    await update.message.reply_text("ArtIntel VIP (Claude Engine) actif. Envoie /bluehunt [Artiste / Œuvre + prix]")
 
 async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
@@ -51,28 +31,22 @@ async def bluehunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /bluehunt [Nom Artiste - Prix demandé ex: 8000€]")
         return
     
-    await update.message.reply_text(f"Scan institutionnel : {query}...")
+    await update.message.reply_text(f"🔍 Analyse institutionnelle approfondie : {query}...")
     
     try:
-        response = call_gemini_resilient(f"Évalue : {query}")
-        text_reply = getattr(response, 'text', None)
-        if not text_reply and getattr(response, 'candidates', None):
-            parts = response.candidates[0].content.parts
-            text_reply = "".join(p.text for p in parts if hasattr(p, 'text'))
-        
-        if not text_reply:
-            text_reply = "Réponse vide."
-            
-        # Nettoyage radical anti-markdown / anti-astérisques
-        clean_text = text_reply.replace('**', '').replace('__', '').replace('*', '').strip()
-        await update.message.reply_text(clean_text)
+        response = client.messages.create(
+            model="claude-3-5-sonnet-latest",
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": f"Évalue cette opportunité : {query}"}
+            ]
+        )
+        text_reply = response.content[0].text
+        await update.message.reply_text(text_reply.strip(), parse_mode=ParseMode.MARKDOWN)
         
     except Exception as e:
-        err_str = str(e)
-        if any(k in err_str.lower() for k in ['503', 'unavailable', 'high demand', '429']):
-            await update.message.reply_text("⚠️ Google AI Studio sature fortement. Patiente 5s et réessaie.")
-        else:
-            await update.message.reply_text(f"Erreur API Gemini : {e}")
+        await update.message.reply_text(f"⚠️ Erreur Claude : {e}")
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -87,17 +61,18 @@ def run_http_server():
     server.serve_forever()
 
 def main():
-    if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
-        print("ERREUR : Il manque une clé secrète !")
+    if not TELEGRAM_TOKEN or not ANTHROPIC_API_KEY:
+        print("ERREUR : Il manque une clé secrète (TELEGRAM_TOKEN ou ANTHROPIC_API_KEY) !")
         return
     
+    # Lancement du serveur HTTP pour le health check Render
     t = threading.Thread(target=run_http_server, daemon=True)
     t.start()
         
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("bluehunt", bluehunt))
-    print("Le bot est réveillé...")
+    print("Le bot Claude est réveillé et à l'écoute...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
